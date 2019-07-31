@@ -1,12 +1,12 @@
 import bcrypt from 'bcrypt';
 import { NextFunction, Request, Response, Router } from 'express';
 import createError from 'http-errors';
+import JWT from 'jsonwebtoken';
 import passport from 'passport';
-import authController from '../controllers/auth';
 import userController from '../controllers/user';
-import { User } from '../entity/user.entity';
 import { isLoggedIn, isNotLoggedIn } from '../middlewares/auth';
-import { issueToken, removeToken } from '../util/jwt';
+import { IUser } from '../models/user.model';
+import { JWT_SECRET } from '../util/secrets';
 
 const authRouter = Router();
 
@@ -21,65 +21,45 @@ authRouter.get('/signup', isNotLoggedIn, async (req: Request, res: Response, nex
 authRouter.post('/signup', isNotLoggedIn,  async (req: Request, res: Response, next: NextFunction) => {
   const { email, password } = req.body;
   try {
-    const exUser = await userController.getUserByEmail(email);
+    const exUser = await userController.GetUserByEmail(email);
     if (exUser) {
       return res.send({message: '이미 가입된 이메일입니다.'});
     }
     const hash = await bcrypt.hash(password, 12);
-    await userController.createUser({
-      email,
-      password: hash,
-      provider: 'local',
-    });
+    await userController.CreateUser({ email, password: hash});
     return res.redirect('/');
   } catch (error) {
-    console.log(error.message);
     next(createError(409));
   }
 });
 
 authRouter.post('/signin', isNotLoggedIn, async (req: Request, res: Response, next: NextFunction) => {
-  passport.authenticate('local', { session: false }, (authError, user: User, info) => {
+  passport.authenticate('local', { session: false }, (authError, user: IUser, info) => {
     if (authError) {
       return next(authError);
     }
     if (info) {
       return res.send(info);
     }
-
-    issueToken(res, user);
+    const token = JWT.sign({
+      id: user.id,
+      email: user.email,
+      profileImageUrl: user.profileImageUrl,
+      privilege: user.privilege,
+    }, JWT_SECRET, {
+      expiresIn: '1h',
+    });
+    res.cookie('token', token, { httpOnly: true, maxAge: 1000 * 60 * 60 });
     return res.redirect(req.headers.referer);
   })(req, res, next);
 });
 
 authRouter.post('/signout', isLoggedIn, (req: Request, res: Response, next: NextFunction) => {
   try {
-    removeToken(res);
+    res.cookie('token', '', { maxAge: 0 });
     return res.redirect(req.headers.referer);
   } catch (err) {
     next(err);
-  }
-});
-
-authRouter.get('/google/callback', isNotLoggedIn, async (req: Request, res: Response, next: NextFunction) => {
-  try {
-    const authorizationCode = req.query.code;
-    const userInfo = await authController.getGoogleUserInfo(authorizationCode);
-
-    let existUser = await userController.getUserByEmail(userInfo.data.email);
-
-    if (!existUser) {
-      existUser = await userController.createUser({
-        email: userInfo.data.email,
-        provider: 'google',
-        profileImageUrl: userInfo.data.picture,
-      });
-    }
-
-    issueToken(res, existUser);
-    return res.redirect('/');
-  } catch (error) {
-    next(error);
   }
 });
 
