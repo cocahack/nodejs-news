@@ -1,68 +1,51 @@
-import { getConnection } from 'typeorm';
 import s3 from '../config/aws';
 import converter from '../config/converter';
-import { Article } from '../entity/article.entity';
-import { User } from '../entity/user.entity';
+import Article, { IArticle } from '../models/article.model';
+import { IUser } from '../models/user.model';
 import { removeUndefinedFields } from '../util/fieldset';
 import { S3_BUCKET } from '../util/secrets';
 
-interface ArticleInfo {
-  article : Article;
+interface IArticleInfo {
+  article : IArticle;
   rawHtml : string;
   writer  : {};
 }
 
 interface IPatchArticleInput {
-  id           : Article['id'];
-  title?        : Article['title'];
-  markdownKey?  : Article['markdownKey'];
-  heroImageUrl? : Article['heroImageUrl'];
+  _id           : IArticle['_id'];
+  title?        : IArticle['title'];
+  markdownKey?  : IArticle['markdownKey'];
+  heroImageUrl? : IArticle['heroImageUrl'];
 }
 
-interface ArticleLikeInput {
-  articleId  : Article['id'];
-  likeUserId : string;
+interface IArticleLikeInput {
+  articleId  : IArticle['_id'];
+  likeUserId : IUser['_id'];
 }
 
-async function getArticleById(articleId: Article['id'], incrementHits = false): Promise<Article> {
+async function getRawArticleById(articleId: IArticle['_id']): Promise<IArticleInfo> {
   try {
-    const connection = getConnection();
+    const article: IArticle = await Article.findOneAndUpdate(
+      { _id: articleId, deletedAt: { $exists: false } },
+      { $inc: { hits: 1 } },
+      { new: true }
+    ).populate('writerId');
 
-    if (incrementHits) {
-      await connection
-        .createQueryBuilder()
-        .update(Article)
-        .set({ hits: () => 'hits + 1'})
-        .execute();
-    }
-
-    const articles = await connection
-      .getRepository(Article)
-      .createQueryBuilder('article')
-      .innerJoinAndSelect('article.writer', 'user', 'article.id = :articleId', { articleId, })
-      .getOne();
-
-    return articles;
-  } catch (error) {
-    throw error;
-  }
-}
-
-async function getMarkdown(markdownKey: Article['markdownKey']): Promise<string> {
-  try {
-    const markdownBuffer = await (s3.getObject({
+    const articleRawHtml = await (s3.getObject({
       Bucket: S3_BUCKET,
-      Key: markdownKey,
+      Key: article.markdownKey,
     }).promise());
 
-    return await markdownBuffer.Body.toString();
+    const rawMarkdown = await articleRawHtml.Body.toString('utf-8');
+
+    return {
+      article,
+      rawHtml: converter.makeHtml(rawMarkdown),
+      writer: article.writerId,
+    };
   } catch (error) {
     throw error;
   }
-}
-
-function convertMarkdownToHtml(rawMarkdown: string): string {
-  return converter.makeHtml(rawMarkdown);
 }
 
 async function createArticle({
@@ -70,80 +53,58 @@ async function createArticle({
   title,
   markdownKey,
   heroImageUrl,
-}): Promise<any> {
+}): Promise<{}> {
   try {
-    return await getConnection()
-      .createQueryBuilder()
-      .insert()
-      .into(Article)
-      .values([
-        { writer: writerId, title, markdownKey, heroImageUrl, }
-      ])
-      .execute();
+    return await Article.create({ writerId, title, markdownKey, heroImageUrl, createdAt: new Date(), hits: 0 });
   } catch (error) {
     throw error;
   }
 }
 
-async function getArticles(page = 1, pageSize = 8): Promise<Article[]> {
+async function getArticles(page = 1, pageSize = 8): Promise<IArticle[]> {
   try {
-    if (page < 1) page = 1;
-    return await getConnection()
-      .getRepository(Article)
-      .createQueryBuilder('article')
-      .innerJoinAndSelect('article.writer', 'user')
-      .where('article.deletedAt is null')
-      .orderBy('article.createdAt', 'DESC')
-      .skip((page - 1) * pageSize)
-      .take(pageSize)
-      .getMany();
+    return await Article.find(
+      { deletedAt: { $exists: false } },
+      undefined,
+      { skip: (page - 1) * pageSize, limit: pageSize }
+    ).sort('-createdAt')
+      .populate('writerId');
   } catch (error) {
     throw error;
   }
 }
 
-async function getArticlesByUserId(userId: User['id'], page = 1, pageSize = 9) {
+async function getArticlesByUserId(userId: IUser['_id'], page: number, pageSize = 9): Promise<IArticle[]> {
   try {
-    if (page < 1) page = 1;
-    return await getConnection()
-      .getRepository(Article)
-      .createQueryBuilder('article')
-      .where('writerId = :userId', { userId, })
-      .andWhere('deletedAt is null')
-      .orderBy('article.createdAt', 'DESC')
-      .skip((page - 1) * pageSize)
-      .take(pageSize)
-      .getMany();
+    return await Article.find(
+      { writerId: userId, deletedAt: { $exists: false } },
+      undefined,
+      { skip: (page - 1) * pageSize, limit: pageSize }).sort('-createdAt');
   } catch (error) {
     throw error;
   }
 }
 
-async function deleteArticle(articleId: Article['id']): Promise<void> {
+async function deleteArticle(articleId: IArticle['_id']): Promise<{}> {
   try {
-    await getConnection()
-      .createQueryBuilder()
-      .update(Article)
-      .set({ deletedAt: new Date() })
-      .where('id = :articleId', { articleId, })
-      .execute();
+    return await Article.updateOne({ _id: articleId }, { deletedAt: new Date() });
   } catch (error) {
     throw error;
   }
 }
 
-async function patchArticleById(patchList): Promise<void> {
+async function patchArticleById({
+  _id,
+  title,
+  markdownKey,
+  heroImageUrl,
+}: IPatchArticleInput): Promise<{}> {
   try {
-    const refinedPatchList = removeUndefinedFields(patchList);
-    // tslint:disable-next-line: no-string-literal
-    delete refinedPatchList['id'];
-
-    await getConnection()
-      .createQueryBuilder()
-      .update(Article)
-      .set({ ...refinedPatchList })
-      .where('id = :id', { id: patchList.id })
-      .execute();
+    const result = await Article.updateOne({
+      _id,
+      deletedAt: { $exists: false }
+    }, removeUndefinedFields({title, markdownKey, heroImageUrl, modifiedAt: new Date() }));
+    return result;
   } catch (error) {
     throw error;
   }
@@ -152,13 +113,12 @@ async function patchArticleById(patchList): Promise<void> {
 async function likeArticle({
   articleId,
   likeUserId,
-}): Promise<void> {
+}: IArticleLikeInput): Promise<void> {
   try {
-    await getConnection()
-      .createQueryBuilder()
-      .relation(Article, 'likeUser')
-      .of(articleId)
-      .add(likeUserId);
+    await Article.updateOne(
+      { _id: articleId, deletedAt: { $exists: false } },
+      { $addToSet: { likeUsers: likeUserId }}
+    );
   } catch (error) {
     throw error;
   }
@@ -167,13 +127,12 @@ async function likeArticle({
 async function retractLikeArticle({
   articleId,
   likeUserId,
-}): Promise<void> {
+}: IArticleLikeInput): Promise<void> {
   try {
-    await getConnection()
-      .createQueryBuilder()
-      .relation(Article, 'likeUser')
-      .of(articleId)
-      .remove(likeUserId);
+    await Article.updateOne(
+      { _id: articleId, deletedAt: { $exists: false } },
+      { $pull: { likeUsers: likeUserId }}
+    );
   } catch (error) {
     throw error;
   }
@@ -182,31 +141,24 @@ async function retractLikeArticle({
 async function checkLikeArticle({
   articleId,
   likeUserId,
-}): Promise<boolean> {
+}: IArticleLikeInput): Promise<boolean> {
   try {
-    const findLike = await getConnection()
-      .getRepository(Article)
-      .createQueryBuilder('article')
-      .innerJoinAndSelect(
-        'article.likeUser',
-        'user',
-        'article.id = :articleId and user.id = :likeUserId',
-        { articleId, likeUserId })
-      .getOne();
-
-    return findLike ? true : false;
+    const result = await Article.findOne({
+      _id: articleId,
+      likeUsers: { $in: likeUserId },
+      deletedAt: { $exists: false },
+    });
+    return result ? true : false;
   } catch (error) {
     throw error;
   }
 }
 
 export default {
-  getArticleById,
-  getMarkdown,
-  convertMarkdownToHtml,
+  getRawArticleById,
   createArticle,
-  getArticles,
   getArticlesByUserId,
+  getArticles,
   deleteArticle,
   patchArticleById,
   likeArticle,
