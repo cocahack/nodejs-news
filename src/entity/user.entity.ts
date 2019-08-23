@@ -1,16 +1,14 @@
-import bcrypt from 'bcrypt';
 import { Column, CreateDateColumn, Entity, ManyToOne, PrimaryGeneratedColumn, UpdateDateColumn } from 'typeorm';
-import { UserPrivilege, UserStatus } from '../types/enums';
 
 @Entity()
-export class User {
+export class TypeUser {
   @PrimaryGeneratedColumn('uuid')
   id : string;
 
   @Column({ unique: true })
   email : string;
 
-  @Column({ nullable: true })
+  @Column()
   password : string;
 
   @Column({ type: 'tinyint' })
@@ -37,58 +35,33 @@ export class User {
   @Column({ nullable: true, })
   deletedAt : Date;
 
-  // @ManyToMany(type => User, User => User.subscribee, {
+  // @ManyToMany(type => TypeUser, typeUser => typeUser.subscribee, {
   //   onDelete: 'CASCADE',
   //   onUpdate: 'CASCADE',
   // })
   // @JoinTable({name: 'subscription'})
-  // subscriber! : User[];
+  // subscriber! : TypeUser[];
 
-  // @ManyToMany(type => User, User => User.subscriber, {
+  // @ManyToMany(type => TypeUser, typeUser => typeUser.subscriber, {
   //   onDelete: 'CASCADE',
   //   onUpdate: 'CASCADE',
   // })
-  // subscribee! : User[];
+  // subscribee! : TypeUser[];
 
-  // @RelationCount((user: User) => user.subscriber)
+  // @RelationCount((user: TypeUser) => user.subscriber)
   // subscriberCount : number;
 
-  // @RelationCount((user: User) => user.subscribee)
+  // @RelationCount((user: TypeUser) => user.subscribee)
   // subscribeeCount : number;
-
-  constructor(constructorInput: IUserConstructor) {
-    if (!constructorInput) return;
-    this.email = constructorInput.email;
-    this.password = constructorInput.password;
-    this.privilege = constructorInput.privilege || UserPrivilege.WRITER;
-    this.profileImageUrl = constructorInput.profileImageUrl;
-    this.provider = constructorInput.provider || 'local';
-    this.status = constructorInput.status || UserStatus.NORMAL;
-  }
-  comparePassword (candidatePassword: string, callback) {
-    bcrypt.compare(candidatePassword, this.password, (err, isMatch: boolean) => {
-      callback(err, isMatch);
-    });
-  }
-}
-
-
-export interface IUserConstructor {
-  email            : User['email'];
-  password         : User['password'];
-  privilege?       : User['privilege'];
-  profileImageUrl? : User['profileImageUrl'];
-  provider?        : User['provider'];
-  status?          : User['status'];
 }
 
 @Entity()
 export class Subscription {
-  @ManyToOne(type => User, (user: User) => user.id, { primary: true })
-  subscribee : User;
+  @ManyToOne(type => TypeUser, (user: TypeUser) => user.id, { primary: true })
+  subscribee : TypeUser;
 
-  @ManyToOne(type => User, (user: User) => user.id, { primary: true })
-  subscriber : User;
+  @ManyToOne(type => TypeUser, (user: TypeUser) => user.id, { primary: true })
+  subscriber : TypeUser;
 
   @CreateDateColumn()
   createdAt : Date;
