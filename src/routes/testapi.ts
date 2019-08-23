@@ -1,8 +1,6 @@
 import bcrypt from 'bcrypt';
 import { NextFunction, Request, Response, Router } from 'express';
-import testArticleController from '../controllers/article';
-import testCommentController from '../controllers/comment';
-import testController from '../controllers/user';
+import testController from '../controllers/userType';
 
 const router = Router();
 
@@ -111,121 +109,6 @@ router.post('/users/unsubscriptions/:id', async (req, res, next) => {
   }
 });
 
-router.get('/articles/:id', async (req, res, next) => {
-  try {
-    const articleId = req.params.id;
 
-    const article = await testArticleController.getArticleById(articleId);
-    return res.send({ message: 'success', article, });
-  } catch (error) {
-    return res.status(500).send(makeErrorMessage(error));
-  }
-});
-
-router.post('/articles', async (req, res) => {
-  try {
-    await testArticleController.createArticle({...req.body});
-    return res.send({ message: 'success', });
-  } catch (error) {
-    return res.status(500).send(makeErrorMessage(error));
-  }
-});
-
-router.get('/articleslist', async (req, res, next) => {
-  try {
-    const articles = await testArticleController.getArticles(parseInt(req.query.page, 10));
-
-    return res.send({ message: 'success',  articles, });
-  } catch (error) {
-    return res.status(500).send(makeErrorMessage(error));
-  }
-});
-
-router.delete('/articles/:articleId', async (req, res, next) => {
-  try {
-    await testArticleController.deleteArticle(req.params.articleId);
-    return res.send({ message: 'success' });
-  } catch (error) {
-    return res.status(500).send(makeErrorMessage(error));
-  }
-});
-
-router.post('/articles/like/:articleId', async (req, res) => {
-  try {
-    await testArticleController.likeArticle({articleId: req.params.articleId, likeUserId: req.body.likeUserId});
-    return res.send({ message: 'success' });
-  } catch (error) {
-    return res.status(500).send(makeErrorMessage(error));
-  }
-});
-
-router.delete('/articles/like/:articleId', async (req, res) => {
-  try {
-    await testArticleController.retractLikeArticle({articleId: req.params.articleId, likeUserId: req.body.likeUserId});
-    return res.send({ message: 'success' });
-  } catch (error) {
-    return res.status(500).send(makeErrorMessage(error));
-  }
-});
-
-router.get('/articles/like/:articleId', async (req, res) => {
-  try {
-    const result = await testArticleController.checkLikeArticle({
-      articleId: req.params.articleId,
-      likeUserId: req.query.likeUserId
-    });
-    return res.send({ message: 'success', result, });
-  } catch (error) {
-    return res.status(500).send(makeErrorMessage(error));
-  }
-});
-
-router.post('/comments/:articleId', async (req, res) => {
-  try {
-    await testCommentController.createComment({
-      articleId: req.params.articleId,
-      ...req.body,
-    });
-    return res.send({ message: 'success' });
-  } catch (error) {
-    return res.status(500).send(makeErrorMessage(error));
-  }
-});
-
-router.get('/comments/:articleId', async (req, res) => {
-  try {
-    const comments = await testCommentController.getComments({
-      articleId: req.params.articleId,
-      ...req.query,
-    });
-    return res.send({ message: 'success', comments, });
-  } catch (error) {
-    return res.status(500).send(makeErrorMessage(error));
-  }
-});
-
-router.post('/comments/like/:commentId', async (req, res) => {
-  try {
-    await testCommentController.likeComment({
-      ...req.params,
-      ...req.body,
-    });
-    return res.send({ message: 'success' });
-  } catch (error) {
-    return res.status(500).send(makeErrorMessage(error));
-  }
-});
-
-router.delete('/comments/like/:commentId', async (req, res) => {
-  try {
-    await testCommentController.retractLikeComment({
-      ...req.params,
-      ...req.body,
-    });
-    return res.send({ message: 'success' });
-  } catch (error) {
-    return res.status(500).send(makeErrorMessage(error));
-  }
-});
 
 export default router;
