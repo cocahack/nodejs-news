@@ -9,7 +9,6 @@ async function getComments ({
   pageSize = 25,
 }): Promise<Comment[]> {
   try {
-    if (page < 1) page = 1;
     const rootComments = await getConnection()
       .getRepository(Comment)
       .createQueryBuilder('comment')
